@@ -1,6 +1,6 @@
 {
   "name": "rn-html-to-pdf",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "test",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
@@ -13,6 +13,8 @@
     "android",
     "ios",
     "cpp",
+    "plugins",
+    "app.plugin.js",
     "*.podspec",
     "!lib/typescript/example",
     "!ios/build",

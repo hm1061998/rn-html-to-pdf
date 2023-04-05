@@ -59,6 +59,10 @@ android {
     targetCompatibility JavaVersion.VERSION_1_8
   }
 
+  configurations{
+    all*.exclude module: 'bcprov-jdk15on'
+  }
+
 }
 
 repositories {

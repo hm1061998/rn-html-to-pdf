@@ -35,3 +35,7 @@ export function convert(options: {
 }): Promise<number> {
   return RnHtmlToPdf.convert(options);
 }
+
+export default {
+  convert,
+};
