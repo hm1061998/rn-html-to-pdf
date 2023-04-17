@@ -17,9 +17,6 @@ const RnHtmlToPdf = NativeModules.RnHtmlToPdf
       }
     );
 
-export function multiply(a: number, b: number): Promise<number> {
-  return RnHtmlToPdf.multiply(a, b);
-}
 export function convert(options: {
   html: string;
   fileName: string;
@@ -36,6 +33,19 @@ export function convert(options: {
   return RnHtmlToPdf.convert(options);
 }
 
+export function createPDFFromImages(options: {
+  fileName: string;
+  base64: boolean;
+  pages: { image: string; content: string };
+  fontName: string;
+  isPaginate: boolean;
+  padding: number;
+  menuTitle: string;
+}): Promise<number> {
+  return RnHtmlToPdf.createPDFFromImages(options);
+}
+
 export default {
   convert,
+  createPDFFromImages,
 };

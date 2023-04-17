@@ -7,4 +7,9 @@ module.exports = {
       root: path.join(__dirname, '..'),
     },
   },
+  project: {
+    ios: {},
+    android: {},
+  },
+  assets: ['../fonts/'],
 };

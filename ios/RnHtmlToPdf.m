@@ -7,6 +7,8 @@
 #import <React/RCTView.h>
 #import <React/UIView+React.h>
 #import <React/RCTUtils.h>
+#import <PDFKit/PDFKit.h>
+#import <CoreText/CoreText.h>
 
 #define PDFSize CGSizeMake(595,842)
 
@@ -79,20 +81,269 @@ RCT_EXPORT_MODULE()
     return self;
 }
 
-// Example methodcsxsfsfsfds
-// See // https://reactnative.dev/docs/native-modules-ios
-RCT_REMAP_METHOD(multiply,
-                 multiplyWithA:(double)a withB:(double)b
-                 withResolver:(RCTPromiseResolveBlock)resolve
-                 withRejecter:(RCTPromiseRejectBlock)reject)
-{
-    NSNumber *result = @(a * b);
+RCT_EXPORT_METHOD(createPDFFromImages:(NSDictionary *)options
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject) {
 
-    resolve(result);
+      NSArray *pages = options[@"pages"] ? [RCTConvert NSArray:options[@"pages"]] : @[];
+      NSString *fileName = options[@"fileName"] ? [RCTConvert NSString:options[@"fileName"]] : @"RNITP";
+      NSString *fontName = options[@"fontName"] ? [RCTConvert NSString:options[@"fontName"]] : @"Roboto";
+      NSString *menuTitle = options[@"menuTitle"] ? [RCTConvert NSString:options[@"menuTitle"]] : @"Menu";
+      BOOL base64 = options[@"base64"] ? options[@"base64"] : false;
+      BOOL isPaginate = options[@"isPaginate"] ? options[@"isPaginate"] : false;
+      float padding = options[@"padding"] ? [RCTConvert float:options[@"padding"]] : 50.0f;
+
+      // Tạo đường dẫn lưu trữ tài liệu PDF
+      NSArray *documentDirectories = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+      NSString *documentDirectory = [documentDirectories objectAtIndex:0];
+      NSString *pdfPath = [NSString stringWithFormat:@"%@/%@.pdf", documentDirectory, fileName];
+      NSURL *pdfURL = [NSURL fileURLWithPath:pdfPath];
+
+      // Tạo PDFDocument
+      // CGFloat padding = 20;
+        // Tạo một tài liệu PDF
+      CGRect pageRect = CGRectMake(0, 0, PDFSize.width , PDFSize.height ); // Kích thước trang A4
+
+      UIGraphicsBeginPDFContextToFile(pdfPath, pageRect, nil);
+
+      CGRect imageRect = CGRectMake(padding, padding, PDFSize.width -  2 * padding, PDFSize.height - 2 * padding); 
+
+      NSInteger pageNumber = 0;
+
+    
+
+      NSMutableArray *tableOfContents = [NSMutableArray array];
+
+      UIFont *customFont = [UIFont fontWithName:fontName size:16.0];
+      // Lấy một font descriptor từ font custom
+      UIFontDescriptor *fontDescriptor = [customFont fontDescriptor];
+
+      // Tạo một font descriptor mới với chế độ in đậm
+      // UIFontDescriptor *boldFontDescriptor = [fontDescriptor fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitBold];
+
+      // UIFont *font = [UIFont fontWithDescriptor:fontDescriptor size:14.0];
+      UIFont *font = [UIFont systemFontOfSize:14.0];
+
+         // Tạo thuộc tính văn bản để định dạng số trang
+      NSMutableDictionary *pageNumberAttributes = [[NSMutableDictionary alloc] init];
+      [pageNumberAttributes setObject:font forKey:NSFontAttributeName];
+      [pageNumberAttributes setObject:[UIColor blackColor] forKey:NSForegroundColorAttributeName];
+      // Vẽ các trang PDF
+      for (NSDictionary *page in pages) {
+          pageNumber++;
+          // Bắt đầu một trang mới
+          UIGraphicsBeginPDFPageWithInfo(pageRect, nil);
+          NSURL *imagePath = [RCTConvert NSURL:page[@"image"]];
+          UIImage *image = [self pathToUIImage:imagePath];
+      
+          [image drawInRect:imageRect];
+
+          if(isPaginate){
+            [self drawPaginate:pageNumber pageAttributes:pageNumberAttributes inRect:pageRect];
+          }
+        
+
+    
+          if(page[@"content"]){
+           
+              NSString *contentText = [RCTConvert NSString:page[@"content"]] ;
+              NSArray *pageSplits = [self findPageSplits:contentText size: CGSizeMake(PDFSize.width -  4 * padding, PDFSize.height - 4 * padding) font:font];
+            
+              int location = 0;
+
+               NSString *title = [RCTConvert NSString:page[@"title"]];
+              [tableOfContents addObject:@{@"title": title, @"page": @(pageNumber+1)}];
+
+              for (NSNumber *splitLength in pageSplits) {
+                  pageNumber++;
+                  UIGraphicsBeginPDFPageWithInfo(pageRect, nil);
+                  NSInteger length = [splitLength integerValue];
+                  NSRange range = NSMakeRange(location, length);
+                  NSString *subString = [contentText substringWithRange:range];
+
+                  CGRect contentRect = imageRect;
+
+
+                  //nếu là trang đầu tiên thì vẽ thêm tiêu đề
+                  if(location == 0){
+                     
+
+                      // Tạo một đối tượng UIFont với font descriptor mới
+                      // UIFont *boldCustomFont = [UIFont fontWithDescriptor:fontDescriptor size:14.0];
+
+                      // Tạo một NSMutableParagraphStyle object
+                      NSMutableParagraphStyle *paragraphStyle = [[NSMutableParagraphStyle alloc] init];
+                      // Thiết lập alignment cho canh giữa
+                      paragraphStyle.alignment = NSTextAlignmentCenter;
+
+                      NSDictionary *attributes = @{NSFontAttributeName:font, NSForegroundColorAttributeName:[UIColor blackColor], NSParagraphStyleAttributeName: paragraphStyle };
+                      NSAttributedString *titleAttributedString = [[NSAttributedString alloc] initWithString:title attributes:attributes];
+                      CGSize size = [title sizeWithAttributes:attributes];
+                      CGPoint point = CGPointMake(padding + (imageRect.size.width - size.width) / 2.0, 30);
+
+
+      
+                      contentRect.origin.y+= 40 ;
+
+                      [titleAttributedString drawAtPoint:point];
+                        // [titleAttributedString drawInRect:rect];
+                  }
+                  
+                  NSAttributedString *contentAttributedString = [[NSAttributedString alloc] initWithString:subString attributes:pageNumberAttributes];
+                  [contentAttributedString drawInRect:contentRect];
+
+                  // Cập nhật tọa độ vẽ
+                  location += length;
+
+                  if(isPaginate){
+                    [self drawPaginate:pageNumber pageAttributes:pageNumberAttributes inRect:pageRect];
+                  }
+                  
+              }
+
+      
+          }
+
+      }
+
+
+        // Lưu tài liệu PDF
+    // Kết thúc tài liệu PDF
+    UIGraphicsEndPDFContext();
+
+    NSData *pdfData = [NSData dataWithContentsOfFile:pdfPath];
+
+    [pdfData writeToFile:pdfPath atomically:YES];
+
+
+    //nếu có ghi chú thì vẽ menu
+    if([tableOfContents count] > 0){
+
+      // Tạo đối tượng đọc tài liệu PDF
+      CGPDFDocumentRef pdfDocument = CGPDFDocumentCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:pdfPath]);
+
+      // Lấy số trang của tài liệu PDF
+      NSInteger pageCount = CGPDFDocumentGetNumberOfPages(pdfDocument);
+
+
+      UIGraphicsBeginPDFContextToFile(pdfPath, pageRect, nil);
+
+
+      UIGraphicsBeginPDFPageWithInfo(pageRect, nil);
+    
+      CGContextRef context = UIGraphicsGetCurrentContext();
+
+      // Vẽ văn bản cho mục lục
+      // UIFont *font1 = [UIFont fontWithDescriptor:fontDescriptor size:18.0];
+      NSDictionary *attributes = @{NSFontAttributeName:font, NSForegroundColorAttributeName:[UIColor blackColor]};
+
+      CGSize size = [menuTitle sizeWithAttributes:attributes];
+      CGPoint point = CGPointMake(padding + (imageRect.size.width - size.width) / 2.0, 50);
+      [menuTitle drawAtPoint:point withAttributes:attributes];
+
+
+      // UIFont *font2 = [UIFont fontWithDescriptor:fontDescriptor size:14.0];
+      NSDictionary *attributes2 = @{NSFontAttributeName:font, NSForegroundColorAttributeName:[UIColor blackColor]};      
+
+
+      // Thiết lập thông số cho đường kẻ chấm
+      CGContextSetLineWidth(context, 1.0);
+      CGContextSetStrokeColorWithColor(context, [UIColor blackColor].CGColor);
+      CGFloat dashes[] = {2.0, 2.0};
+      CGContextSetLineDash(context, 0, dashes, 2);
+      
+      int menuPageCount = 1;
+      BOOL firstPage = true;
+
+      //vẽ menu
+      for (NSDictionary *entry in tableOfContents) {
+          NSString *title = entry[@"title"];
+          NSInteger page = [entry[@"page"] integerValue];
+          NSString *tocPageNumber = [NSString stringWithFormat:@"%ld", (long)page];
+
+          CGFloat tocY = (firstPage ? 90.0 : 50.0) + 30 * menuPageCount;
+
+          CGPoint tocTitlePoint = CGPointMake(padding, tocY);
+
+          CGFloat tocPageX = imageRect.size.width;
+          CGPoint tocPagePoint = CGPointMake(tocPageX, tocY);
+
+
+          [title drawAtPoint:tocTitlePoint withAttributes:attributes2];
+          [tocPageNumber drawAtPoint:tocPagePoint withAttributes:attributes2];
+
+          CGSize tocSize = [title sizeWithAttributes:attributes2];
+          CGSize tocPageSize = [tocPageNumber sizeWithAttributes:attributes2];
+
+
+          CGFloat lineY = tocTitlePoint.y + tocSize.height; //vị trí trục y của đường kẻ
+          CGContextMoveToPoint(context, tocPageX  - tocPageSize.width, lineY);  //vị trí kết thúc của đường kẻ = độ rộng của vùng chứa - độ rộng của số trang
+          CGContextAddLineToPoint(context, tocSize.width + padding, lineY); //vị trí bắt đầu của đường kẻ = độ rộng của tiêu đề
+          CGContextStrokePath(context);
+
+          if(menuPageCount >= 23){
+            menuPageCount = 1;
+            firstPage = false;
+            UIGraphicsBeginPDFPageWithInfo(pageRect, nil);
+          }else{
+            menuPageCount++;
+          }
+      }
+
+
+      // Vẽ lại nội dung các trang PDF mới vào sau menu
+      for (NSInteger pageIndex = 1; pageIndex <= pageCount; pageIndex++) {
+          // Bắt đầu một trang mới
+          UIGraphicsBeginPDFPageWithInfo(pageRect, nil);
+
+
+          // Thiết lập hệ tọa độ để bắt đầu ở góc trên cùng bên trái của trang
+          CGContextTranslateCTM(context, 0, PDFSize.height);
+          CGContextScaleCTM(context, 1.0, -1.0);
+          
+          // Lấy đối tượng CGPDFPageRef của trang cần vẽ
+          CGPDFPageRef pdfPage = CGPDFDocumentGetPage(pdfDocument, pageIndex);
+          
+          // Vẽ lại nội dung của trang PDF ban đầu
+          CGContextDrawPDFPage(context, pdfPage);
+      }
+
+      // Kết thúc vẽ tài liệu PDF mới
+      UIGraphicsEndPDFContext();
+
+      CGPDFDocumentRelease(pdfDocument);
+
+    }
+   
+  
+
+      // Tạo đối tượng đọc tài liệu PDF
+    CGPDFDocumentRef pdfDocument = CGPDFDocumentCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:pdfPath]);
+
+    // Lấy số trang của tài liệu PDF
+    NSInteger pageCount = CGPDFDocumentGetNumberOfPages(pdfDocument);
+
+    // Giải phóng bộ nhớ
+    CGPDFDocumentRelease(pdfDocument);
+
+    NSString *pdfBase64 = @"";
+
+    if (base64) {
+        pdfBase64 = [pdfData base64EncodedStringWithOptions:0];
+    }
+  
+      NSDictionary *data = @{
+              @"filePath":pdfPath,
+              @"base64":pdfBase64,
+              @"numberOfPages":@(pageCount),
+              };
+    resolve(data);
+   
 }
 
+
 RCT_EXPORT_METHOD(convert:(NSDictionary *)options
-                  resolver:(RCTPromiseResolveBlock)resolve
+                  resolvePromise:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject) {
 
     if (options[@"html"]){
@@ -226,6 +477,50 @@ RCT_EXPORT_METHOD(convert:(NSDictionary *)options
         _rejectBlock(RCTErrorUnspecified, nil, RCTErrorWithMessage(error.description));
     }
 }
+
+-(void)drawPaginate:(NSInteger *)page pageAttributes: (NSMutableDictionary *)pageNumberAttributes inRect:(CGRect) rect{
+    NSString *pageNumberString = [NSString stringWithFormat:@"%d", page];
+    // Tạo đối tượng NSAttributedString từ chuỗi số trang và thuộc tính văn bản
+    NSAttributedString *pageNumberAttributedString = [[NSAttributedString alloc] initWithString:pageNumberString attributes:pageNumberAttributes];
+
+    // Lấy kích thước chuỗi số trang
+    CGSize pageNumberSize = [pageNumberAttributedString size];
+
+    // Tính toán vị trí để vẽ số trang
+    CGFloat pageNumberX = (rect.size.width - pageNumberSize.width )/ 2;
+    CGFloat pageNumberY = rect.size.height - pageNumberSize.height - 10;
+
+    // Vẽ số trang lên trang PDF
+    [pageNumberAttributedString drawAtPoint:CGPointMake(pageNumberX, pageNumberY)];
+} 
+
+-(NSArray*)findPageSplits:(NSString*)string size:(CGSize)size font:(UIFont*)font;
+{
+  NSMutableArray* result = [[NSMutableArray alloc] initWithCapacity:32];
+  CTFontRef fnt = CTFontCreateWithName((CFStringRef)font.fontName, font.pointSize,NULL);
+  CFAttributedStringRef str = CFAttributedStringCreate(kCFAllocatorDefault, 
+                                                       (CFStringRef)string, 
+                                                       (CFDictionaryRef)[NSDictionary dictionaryWithObjectsAndKeys:(__bridge id)fnt, kCTFontAttributeName, nil]);
+  CTFramesetterRef fs = CTFramesetterCreateWithAttributedString(str);
+  CFRange r = {0,0};
+  CFRange res = {0,0};
+  NSInteger str_len = [string length];
+  do {
+    CTFramesetterSuggestFrameSizeWithConstraints(fs,r, NULL, size, &res);
+    r.location += res.length;
+    [result addObject:[NSNumber numberWithInt:res.length]];
+  } while(r.location < str_len);
+//  NSLog(@"%@",result);
+  CFRelease(fs);
+  CFRelease(str);
+  CFRelease(fnt);
+  return result;
+}  
+
+- (UIImage *)pathToUIImage:(NSURL *)path {
+  return [UIImage imageWithData:[NSData dataWithContentsOfURL:path]];
+}
+
 
 // Don't compile this code when we build for the old architecture.
 #ifdef RCT_NEW_ARCH_ENABLED
