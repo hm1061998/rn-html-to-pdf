@@ -5,6 +5,7 @@
 #import <React/RCTConvert.h>
 #import <React/RCTEventDispatcher.h>
 #import <React/RCTView.h>
+#import <React/RCTLog.h>
 #import <React/UIView+React.h>
 #import <React/RCTUtils.h>
 #import <PDFKit/PDFKit.h>
@@ -135,9 +136,23 @@ RCT_EXPORT_METHOD(createPDFFromImages:(NSDictionary *)options
           UIGraphicsBeginPDFPageWithInfo(pageRect, nil);
           NSURL *imagePath = [RCTConvert NSURL:page[@"image"]];
           UIImage *image = [self pathToUIImage:imagePath];
-      
-          [image drawInRect:imageRect];
 
+          CGRect imagePageRect = imageRect;
+          CGFloat aspectRatio = image.size.width / image.size.height;
+          if (aspectRatio > 1) {
+              // Nếu ảnh ngang hơn dọc, tính toán lại chiều cao để tỷ lệ với chiều rộng của trang PDF
+              CGFloat newHeight = imagePageRect.size.width / aspectRatio;
+              CGFloat offsetY = (imagePageRect.size.height - newHeight) / 2;
+              imagePageRect = CGRectMake(imagePageRect.origin.x, imagePageRect.origin.y + offsetY, imagePageRect.size.width, newHeight);
+          } else {
+              // Nếu ảnh dọc hơn ngang, tính toán lại chiều rộng để tỷ lệ với chiều cao của trang PDF
+              CGFloat newWidth = imagePageRect.size.height * aspectRatio;
+              CGFloat offsetX = (imagePageRect.size.width - newWidth) / 2;
+              imagePageRect = CGRectMake(imagePageRect.origin.x + offsetX, imagePageRect.origin.y, newWidth, imagePageRect.size.height);
+          }
+
+          [image drawInRect:imagePageRect];
+      
           if(isPaginate){
             [self drawPaginate:pageNumber pageAttributes:pageNumberAttributes inRect:pageRect];
           }
@@ -442,6 +457,106 @@ RCT_EXPORT_METHOD(convert:(NSDictionary *)options
     _rejectBlock = reject;
 
 }
+
+
+RCT_EXPORT_METHOD(mergePdf:(NSDictionary *)options
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject) {
+
+      NSArray *pdfFiles = options[@"files"] ? [RCTConvert NSArray:options[@"files"]] : @[];
+
+        // Tạo đường dẫn lưu trữ tài liệu PDF
+      NSArray *documentDirectories = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+      NSString *documentDirectory = [documentDirectories objectAtIndex:0];
+      NSString *defaultPdfPath = [NSString stringWithFormat:@"%@/%@.pdf", documentDirectory, @"RNITPDF"];
+
+
+      NSString *mergedPdfFile = options[@"filePath"] ? [RCTConvert NSString:options[@"filePath"]] : defaultPdfPath;
+
+     // Tạo một mảng tài liệu PDF
+      NSMutableArray *pdfDocuments = [NSMutableArray array];
+
+      // Duyệt qua mảng file PDF
+      for (NSString *filePath in pdfFiles) {
+          // Tạo một NSURL từ đường dẫn file
+          NSURL *pdfURL = [NSURL fileURLWithPath:filePath];
+          // Tạo một tài liệu PDF từ URL
+          CGPDFDocumentRef pdfDoc = CGPDFDocumentCreateWithURL((__bridge CFURLRef)pdfURL);
+
+          // NSData *pdfData = [NSData dataWithContentsOfFile:filePath];
+          // CFDataRef dataRef = (__bridge CFDataRef)pdfData;
+          // CGDataProviderRef provider = CGDataProviderCreateWithCFData(dataRef);
+          // CGPDFDocumentRef pdfDoc = CGPDFDocumentCreateWithProvider(provider);
+          // Kiểm tra xem tài liệu PDF đã được tạo thành công chưa
+          if (pdfDoc != NULL && CGPDFDocumentIsEncrypted(pdfDoc) == false) {
+              // Thêm tài liệu PDF vào mảng
+              [pdfDocuments addObject:(__bridge id _Nonnull)(pdfDoc)];
+          } else {
+              RCTLogWarn(@"Failed to create PDF document from file: %@", filePath);
+          }
+      }
+
+    // Tạo một đối tượng NSMutableData để lưu nội dung PDF kết hợp
+    NSMutableData *combinedPDFData = [NSMutableData data];
+
+    // Tạo một tài liệu PDF trống để bắt đầu ghi nội dung
+    UIGraphicsBeginPDFContextToData(combinedPDFData, CGRectZero, nil);
+
+    // Duyệt qua tất cả các tài liệu PDF và trang trong mỗi tài liệu
+    for (NSUInteger i = 0; i < [pdfDocuments count]; i++) {
+        CGPDFDocumentRef pdfDoc = (__bridge CGPDFDocumentRef)[pdfDocuments objectAtIndex:i];
+        size_t numPages = CGPDFDocumentGetNumberOfPages(pdfDoc);
+        for (size_t pageIndex = 1; pageIndex <= numPages; pageIndex++) {
+            // Truy xuất trang PDF
+            CGPDFPageRef pdfPage = CGPDFDocumentGetPage(pdfDoc, pageIndex);
+            // Lấy kích thước trang PDF
+            CGRect pageRect = CGPDFPageGetBoxRect(pdfPage, kCGPDFMediaBox);
+            // Bắt đầu trang mới trong tài liệu PDF kết hợp
+            UIGraphicsBeginPDFPageWithInfo(pageRect, nil);
+            // Vẽ nội dung của trang PDF lên trang mới
+            CGContextRef context = UIGraphicsGetCurrentContext();
+            CGContextSaveGState(context);
+            CGContextTranslateCTM(context, 0.0, pageRect.size.height);
+            CGContextScaleCTM(context, 1.0, -1.0);
+            CGContextDrawPDFPage(context, pdfPage);
+            CGContextRestoreGState(context);
+        }
+    }
+
+    // Kết thúc tài liệu PDF kết hợp
+    UIGraphicsEndPDFContext();
+
+    // Giải phóng các tài liệu PDF
+    for (NSUInteger i = 0; i < [pdfDocuments count]; i++) {
+         CGPDFDocumentRef pdfDoc = (__bridge CGPDFDocumentRef)[pdfDocuments objectAtIndex:i];
+        CGPDFDocumentRelease(pdfDoc);
+    }
+
+    // Lấy dữ liệu PDF kết hợp đã được tạo ra
+    NSData *combinedPDF = [NSData dataWithData:combinedPDFData];
+
+    [combinedPDF writeToFile:mergedPdfFile atomically:YES];
+
+      // Tạo đối tượng đọc tài liệu PDF
+    CGPDFDocumentRef pdfDocument = CGPDFDocumentCreateWithURL((__bridge CFURLRef)[NSURL fileURLWithPath:mergedPdfFile]);
+
+    // Lấy số trang của tài liệu PDF
+    NSInteger pageCount = CGPDFDocumentGetNumberOfPages(pdfDocument);
+
+    // Giải phóng bộ nhớ
+    CGPDFDocumentRelease(pdfDocument);
+
+
+       NSDictionary *data = @{
+              @"filePath":mergedPdfFile,
+              @"numberOfPage":@(pageCount)
+              };
+
+    resolve(data);
+
+}
+
+
 -(void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     if (webView.isLoading)
     return;

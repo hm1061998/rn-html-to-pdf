@@ -39,6 +39,10 @@ import com.itextpdf.kernel.pdf.canvas.draw.DashedLine
 import com.itextpdf.kernel.colors.ColorConstants
 import com.itextpdf.layout.properties.TextAlignment;
 import com.itextpdf.kernel.events.Event
+import com.itextpdf.kernel.pdf.ReaderProperties
+import com.itextpdf.kernel.pdf.MemoryLimitsAwareHandler
+import com.itextpdf.io.source.IRandomAccessSource
+import com.itextpdf.io.source.RandomAccessSourceFactory
 
 import java.io.File
 import java.io.FileOutputStream
@@ -312,8 +316,52 @@ class RnHtmlToPdfModule(reactContext: ReactApplicationContext) :
         }
   }
 
-  
+  @ReactMethod
+  fun mergePdf(options: ReadableMap, promise: Promise) {
+    val activity: Activity = currentActivity as Activity
 
+    var dir : String = activity.getCacheDir().toString()
+    
+    var pdfFiles: ReadableArray = options.getArray("files") ?: Arguments.createArray()
+    val mergedPdfFile: String = if(options.hasKey("filePath")) options.getString("filePath")?:"${dir}/RNITPDF.pdf" else "${dir}/RNITPDF.pdf"
+
+
+    val mergedOutputStream = FileOutputStream(File(mergedPdfFile))
+    val mergedPdfDocument = PdfDocument(PdfWriter(mergedOutputStream))
+
+     mergedPdfDocument.setDefaultPageSize(PageSize.A4)  // cập nhật kích thước trang
+
+    val merger = PdfMerger(mergedPdfDocument)
+
+    for (i in 0 until pdfFiles.size()) {
+        val pdfFile = pdfFiles.getString(i)
+        val pdfDocument = PdfDocument(PdfReader(File(pdfFile)))
+        merger.merge(pdfDocument, 1, pdfDocument.numberOfPages)
+      
+        mergedPdfDocument.flushCopiedObjects(pdfDocument)
+        pdfDocument.close()
+    }
+
+   
+
+    mergedPdfDocument.close()
+    mergedOutputStream.close()
+
+    val result: WritableMap = WritableNativeMap()
+
+    result.putString("filePath", mergedPdfFile)
+    promise.resolve(result)
+  }
+  
+    fun pdfFileToRandomAccessSource(pdfFile: File): IRandomAccessSource {
+        // Create a RandomAccessSourceFactory object
+        val factory = RandomAccessSourceFactory()
+
+        // Create a RandomAccessSource object from the PDF file
+        val source = factory.createSource(pdfFile.inputStream())
+
+        return source
+    }
 
   // Phương thức chuyển đổi bitmap thành mảng byte
   private fun convertBitmapToByteArray(bitmap: Bitmap): ByteArray {

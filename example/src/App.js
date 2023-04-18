@@ -13,11 +13,17 @@ import {
   NativeEventEmitter,
   NativeModules,
 } from 'react-native';
-import { multiply, convert, createPDFFromImages } from 'rn-html-to-pdf';
+import { mergePdf, convert, createPDFFromImages } from 'rn-html-to-pdf';
 import MultipleImagePicker from '@baronha/react-native-multiple-image-picker';
 import FileViewer from 'react-native-file-viewer';
 import Pdf from 'react-native-pdf';
 import { ActivityIndicator } from 'react-native';
+import DocumentPicker, {
+  DirectoryPickerResponse,
+  DocumentPickerResponse,
+  isInProgress,
+  types,
+} from 'react-native-document-picker';
 import {
   AdenCompat,
   _1977Compat,
@@ -278,6 +284,32 @@ export default function App() {
     try {
       setPdf(null);
 
+      const pickerResult = await DocumentPicker.pickMultiple({
+        presentationStyle: 'fullScreen',
+        copyTo: 'cachesDirectory',
+      });
+      // const pickerResult = await DocumentPicker.pickSingle({
+      //   presentationStyle: 'fullScreen',
+      //   copyTo: 'cachesDirectory',
+      // });
+
+      console.log({ pickerResult });
+
+      const resFile = await mergePdf({
+        files: pickerResult.map((file) =>
+          Platform.select({
+            ios: file.fileCopyUri.replace('file://', ''),
+            android: file.fileCopyUri.replace('file://', ''),
+          })
+        ),
+        filePath: undefined,
+      });
+
+      // setPdf(pickerResult.fileCopyUri);
+      setPdf(resFile.filePath);
+
+      console.log({ resFile });
+      return;
       const response = await MultipleImagePicker.openPicker({
         usedCameraButton: true,
         mediaType: 'image',

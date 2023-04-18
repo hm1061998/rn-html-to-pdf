@@ -36,7 +36,7 @@ export function convert(options: {
 export function createPDFFromImages(options: {
   fileName: string;
   base64: boolean;
-  pages: { image: string; content: string };
+  pages: Array<{ image: string; content: string }>;
   fontName: string;
   isPaginate: boolean;
   padding: number;
@@ -45,7 +45,15 @@ export function createPDFFromImages(options: {
   return RnHtmlToPdf.createPDFFromImages(options);
 }
 
+export function mergePdf(options: {
+  filePath: string;
+  files: Array<string>;
+}): Promise<number> {
+  return RnHtmlToPdf.mergePdf(options);
+}
+
 export default {
   convert,
   createPDFFromImages,
+  mergePdf,
 };
