@@ -90,8 +90,8 @@ RCT_EXPORT_METHOD(createPDFFromImages:(NSDictionary *)options
       NSString *fileName = options[@"fileName"] ? [RCTConvert NSString:options[@"fileName"]] : @"RNITP";
       NSString *fontName = options[@"fontName"] ? [RCTConvert NSString:options[@"fontName"]] : @"Roboto";
       NSString *menuTitle = options[@"menuTitle"] ? [RCTConvert NSString:options[@"menuTitle"]] : @"Menu";
-      BOOL base64 = options[@"base64"] ? options[@"base64"] : false;
-      BOOL isPaginate = options[@"isPaginate"] ? options[@"isPaginate"] : false;
+      BOOL base64 = options[@"base64"] ? [RCTConvert BOOL:options[@"base64"]] : false;
+      BOOL isPaginate = options[@"isPaginate"] ? [RCTConvert BOOL:options[@"isPaginate"]] : false;
       float padding = options[@"padding"] ? [RCTConvert float:options[@"padding"]] : 50.0f;
 
       // Tạo đường dẫn lưu trữ tài liệu PDF
